@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/echofetch-icon.png" width="88" alt="EchoFetch app icon">
+</p>
+
 <h1 align="center">EchoFetch</h1>
 
 <p align="center">A native Mac app that saves videos and audio from a link. Copy, switch to EchoFetch, download.</p>
@@ -19,6 +23,20 @@
 - Download whole playlists into their own folder. Videos that can't be downloaded are skipped.
 - History of everything you've downloaded, with Show in Finder.
 - The download engine ([yt-dlp](https://github.com/yt-dlp/yt-dlp)) updates itself once a day, so YouTube changes are picked up without a new EchoFetch release.
+
+## Screenshots
+
+![EchoFetch Download tab with a YouTube link, its preview, and a finished download.](docs/images/echofetch-download.png)
+
+*Download*
+
+![EchoFetch History tab listing a downloaded video.](docs/images/echofetch-history.png)
+
+*History*
+
+![EchoFetch Settings for the save folder, audio format, copied links, and the download engine.](docs/images/echofetch-settings.png)
+
+*Settings*
 
 ## Install
 
