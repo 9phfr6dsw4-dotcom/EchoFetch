@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleExecutable</key>
+    <string>EchoFetch</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon.icns</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.echofetch.app</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>EchoFetch</string>
+    <key>CFBundleDisplayName</key>
+    <string>EchoFetch</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>26.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>EchoFetch saves the videos and audio you download to your Downloads folder.</string>
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>EchoFetch saves downloads to the Desktop folder you chose in Settings.</string>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>EchoFetch saves downloads to the Documents folder you chose in Settings.</string>
+    <key>NSRemovableVolumesUsageDescription</key>
+    <string>EchoFetch saves downloads to the drive you chose in Settings.</string>
+    <key>NSNetworkVolumesUsageDescription</key>
+    <string>EchoFetch saves downloads to the network folder you chose in Settings.</string>
+</dict>
+</plist>
