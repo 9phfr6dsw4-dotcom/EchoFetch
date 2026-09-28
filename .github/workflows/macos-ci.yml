@@ -1,0 +1,64 @@
+name: EchoFetch CI
+
+on:
+  push:
+    branches: [main, "feat/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test on macOS 26
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify runner architecture and Xcode SDK
+        run: |
+          test "$(uname -m)" = "arm64"
+          xcodebuild -version
+          sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
+          printf 'macOS SDK: %s\n' "$sdk_version"
+          sdk_major="${sdk_version%%.*}"
+          test "$sdk_major" -ge 26
+      - name: Fetch and verify the bundled download tools
+        run: bash Scripts/fetch-tools.sh
+      - name: Run tests, including real downloads from a local sample video
+        run: |
+          tools="$GITHUB_WORKSPACE/.build/echofetch-tools/bin"
+          site="$RUNNER_TEMP/echofetch-site"
+          mkdir -p "$site"
+          "$tools/ffmpeg" -hide_banner -loglevel error -y \
+            -f lavfi -i "testsrc2=duration=4:size=640x360:rate=30" \
+            -f lavfi -i "sine=frequency=440:duration=4" \
+            -c:v libx264 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -shortest \
+            "$site/sample.mp4"
+          python3 -m http.server 8765 --bind 127.0.0.1 --directory "$site" > "$RUNNER_TEMP/http.log" 2>&1 &
+          server_pid=$!
+          for _ in $(seq 1 30); do
+            curl -fsS -o /dev/null http://127.0.0.1:8765/sample.mp4 && break
+            sleep 1
+          done
+          curl -fsS -o /dev/null http://127.0.0.1:8765/sample.mp4
+          ECHOFETCH_TOOLS_DIRECTORY="$tools" \
+          ECHOFETCH_TEST_MEDIA_URL="http://127.0.0.1:8765/sample.mp4" \
+            swift test
+          kill "$server_pid" || true
+      - name: Build, package, and verify native app
+        run: bash Scripts/package-app.sh
+      - name: Launch packaged app from a clean location without .build
+        run: bash Scripts/smoke-test.sh
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          name: EchoFetch-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            dist/EchoFetch.zip
+            dist/EchoFetch.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
