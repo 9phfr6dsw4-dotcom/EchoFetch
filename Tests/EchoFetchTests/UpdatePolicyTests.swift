@@ -7,7 +7,7 @@ final class UpdatePolicyTests: XCTestCase {
         XCTAssertTrue(UpdateInstallPolicy.canInstallNow(isBusy: false))
     }
 
-    func testWaitsWhileDownloadingSetUpOrUpdatingTheEngine() {
+    func testWaitsWhileDownloading() {
         XCTAssertFalse(UpdateInstallPolicy.canInstallNow(isBusy: true))
     }
 
