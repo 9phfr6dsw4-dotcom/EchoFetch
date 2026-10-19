@@ -6,9 +6,8 @@ import Sparkle
 /// EchoFetch's automatic updates, through Sparkle.
 ///
 /// Sparkle checks every hour (set in Info.plist) and once right after launch. When automatic
-/// installs are on, a downloaded update is installed and EchoFetch relaunched as soon as nothing
-/// is downloading, setting up its tools or updating its download engine. The settings live in
-/// Sparkle's own saved preferences.
+/// installs are on, a downloaded update is installed and EchoFetch relaunched as soon as no
+/// download is running. The settings live in Sparkle's own saved preferences.
 @MainActor
 @Observable
 final class UpdateController: NSObject {
@@ -22,19 +21,18 @@ final class UpdateController: NSObject {
     @ObservationIgnored private var installWaitTask: Task<Void, Never>?
     @ObservationIgnored private var pendingInstall: (() -> Void)?
     @ObservationIgnored private let downloads: DownloadController
-    @ObservationIgnored private let tools: ToolsController
 
-    init(downloads: DownloadController, tools: ToolsController) {
+    init(downloads: DownloadController) {
         self.downloads = downloads
-        self.tools = tools
         super.init()
     }
 
     private var updater: SPUUpdater? { controller?.updater }
 
-    /// Work that an update must not interrupt.
+    /// Only a download is work an update must not interrupt. The first-run tool setup and the
+    /// engine check are short, and they start again on their own, so they never hold an update back.
     private var isBusy: Bool {
-        downloads.isDownloading || tools.setupState == .preparing || tools.engineCheck == .checking
+        downloads.isDownloading
     }
 
     /// Starts the updater, then checks right away if automatic checks are on.

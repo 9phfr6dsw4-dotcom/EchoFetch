@@ -19,7 +19,7 @@ final class EchoFetchRuntime {
         self.tools = tools
         self.history = history
         self.downloads = downloads
-        self.updates = UpdateController(downloads: downloads, tools: tools)
+        self.updates = UpdateController(downloads: downloads)
         RunningApp.runtime = self
     }
 
