@@ -27,6 +27,12 @@ struct EchoFetchApp: App {
             }
         }
         .defaultSize(width: 920, height: 760)
+        .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { runtime.updates.checkForUpdates() }
+                    .disabled(!runtime.updates.canCheckForUpdates)
+            }
+        }
     }
 }
 

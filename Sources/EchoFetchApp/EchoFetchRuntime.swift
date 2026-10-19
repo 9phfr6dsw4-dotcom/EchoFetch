@@ -9,22 +9,26 @@ final class EchoFetchRuntime {
     let tools: ToolsController
     let history: HistoryController
     let downloads: DownloadController
+    let updates: UpdateController
     private var hasStarted = false
 
     init() {
         let tools = ToolsController()
         let history = HistoryController()
+        let downloads = DownloadController(tools: tools, history: history)
         self.tools = tools
         self.history = history
-        self.downloads = DownloadController(tools: tools, history: history)
+        self.downloads = downloads
+        self.updates = UpdateController(downloads: downloads, tools: tools)
         RunningApp.runtime = self
     }
 
-    /// Sets up the download tools (only slow the very first time), fills in a copied link, then
-    /// looks for a newer download engine if a day has passed since the last check.
+    /// Starts automatic updates, sets up the download tools (only slow the very first time), fills
+    /// in a copied link, then looks for a newer download engine if a day has passed since the last check.
     func start() async {
         guard !hasStarted else { return }
         hasStarted = true
+        updates.start()
         await tools.prepare()
         downloads.fillInCopiedLink()
         await tools.checkForEngineUpdateIfDue()

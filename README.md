@@ -44,6 +44,8 @@
 2. Open it. The builds aren't notarized, so the first time macOS says it can't check the app: open **System Settings → Privacy & Security** and choose **Open Anyway**.
 3. The first launch takes a few seconds while EchoFetch sets up its download tools.
 
+After that, EchoFetch updates itself: it checks for a new version when it starts and every hour, and installs it once nothing is downloading. **Check for Updates…** is in the app menu, and Settings → Updates has the options.
+
 ## How it works
 
 EchoFetch is a SwiftUI app that runs the command-line tools it ships with. There's no server and no API:
@@ -51,6 +53,7 @@ EchoFetch is a SwiftUI app that runs the command-line tools it ships with. There
 - **yt-dlp** finds and downloads the media. It lives in `~/Library/Application Support/EchoFetch/Tools`, where it can update itself (checksum-verified by yt-dlp).
 - **ffmpeg** and **ffprobe** join video and audio into one MP4 and convert audio to MP3.
 - **Deno** runs the JavaScript YouTube requires.
+- **[Sparkle](https://sparkle-project.org)** installs new versions of EchoFetch itself. Each update is signed, and EchoFetch refuses anything that isn't signed by its own key.
 
 Each tool is downloaded at a pinned version and checked against its SHA-256 when the app is built (`Scripts/fetch-tools.sh`), and checked again when EchoFetch unpacks it.
 
@@ -70,4 +73,4 @@ Only download videos you have the right to save, and respect each site's terms.
 
 ## License
 
-EchoFetch is under the MIT License. The bundled tools keep their own licenses: yt-dlp (Unlicense), ffmpeg (GPL build from [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static)) and Deno (MIT).
+EchoFetch is under the MIT License. The bundled tools keep their own licenses: yt-dlp (Unlicense), ffmpeg (GPL build from [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static)) and Deno (MIT). Sparkle's license is in [Resources/Acknowledgements.txt](Resources/Acknowledgements.txt).

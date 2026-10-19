@@ -8,9 +8,23 @@ let package = Package(
         .library(name: "EchoFetchCore", targets: ["EchoFetchCore"]),
         .executable(name: "EchoFetchApp", targets: ["EchoFetchApp"])
     ],
+    dependencies: [
+        // Automatic updates. Pinned exactly; the packaged app embeds this framework.
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0")
+    ],
     targets: [
         .target(name: "EchoFetchCore"),
-        .executableTarget(name: "EchoFetchApp", dependencies: ["EchoFetchCore"]),
+        .executableTarget(
+            name: "EchoFetchApp",
+            dependencies: [
+                "EchoFetchCore",
+                .product(name: "Sparkle", package: "Sparkle")
+            ],
+            linkerSettings: [
+                // The packaged app keeps Sparkle.framework in Contents/Frameworks.
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])
+            ]
+        ),
         .testTarget(name: "EchoFetchTests", dependencies: ["EchoFetchCore"])
     ]
 )

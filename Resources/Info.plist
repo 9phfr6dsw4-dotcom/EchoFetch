@@ -19,9 +19,9 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.0</string>
+    <string>0.2.0</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>2</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.utilities</string>
     <key>LSMinimumSystemVersion</key>
@@ -38,5 +38,19 @@
     <string>EchoFetch saves downloads to the drive you chose in Settings.</string>
     <key>NSNetworkVolumesUsageDescription</key>
     <string>EchoFetch saves downloads to the network folder you chose in Settings.</string>
+    <key>SUFeedURL</key>
+    <string>https://github.com/9phfr6dsw4-dotcom/EchoFetch/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>XbrkJTaPzhNpqefpNzb+rr0Rwe+AP5R0B4o+gv3Aur0=</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUAutomaticallyUpdate</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>3600</integer>
+    <key>SURequireSignedFeed</key>
+    <true/>
+    <key>SUVerifyUpdateBeforeExtraction</key>
+    <true/>
 </dict>
 </plist>

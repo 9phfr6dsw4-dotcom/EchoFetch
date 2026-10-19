@@ -13,7 +13,7 @@ jobs:
   test:
     name: Test on macOS 26
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
         with:
@@ -49,10 +49,25 @@ jobs:
           ECHOFETCH_TEST_MEDIA_URL="http://127.0.0.1:8765/sample.mp4" \
             swift test
           kill "$server_pid" || true
+      - name: Set up the signing identity
+        env:
+          SELF_SIGN_P12_BASE64: ${{ secrets.SELF_SIGN_P12_BASE64 }}
+          SELF_SIGN_P12_PASSWORD: ${{ secrets.SELF_SIGN_P12_PASSWORD }}
+          DEVELOPER_ID_P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          NOTARY_API_KEY_P8_BASE64: ${{ secrets.NOTARY_API_KEY_P8_BASE64 }}
+          NOTARY_API_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
+          NOTARY_API_ISSUER_ID: ${{ secrets.NOTARY_API_ISSUER_ID }}
+        run: bash Scripts/ci-signing.sh
       - name: Build, package, and verify native app
         run: bash Scripts/package-app.sh
       - name: Launch packaged app from a clean location without .build
         run: bash Scripts/smoke-test.sh
+      - name: Update an older build to a newer one through Sparkle
+        run: bash Scripts/update-test.sh
+      - name: Remove the signing identity
+        if: always()
+        run: bash Scripts/ci-signing.sh cleanup
       - uses: actions/upload-artifact@v7
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
@@ -60,5 +75,196 @@ jobs:
           path: |
             dist/EchoFetch.zip
             dist/EchoFetch.zip.sha256
+            dist/signing.txt
           if-no-files-found: error
           retention-days: 30
+
+  release-tools:
+    name: Test release tools
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Run release tool tests
+        run: python3 -I Scripts/release/test_sparkle_release.py
+      - name: Check the app trusts the release signing key
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          if [ -z "$SPARKLE_PRIVATE_KEY" ]; then
+            echo "SPARKLE_PRIVATE_KEY isn't available to this run; the release job checks it again."
+            exit 0
+          fi
+          app_key="$(python3 -c "import plistlib; print(plistlib.load(open('Resources/Info.plist', 'rb'))['SUPublicEDKey'])")"
+          signing_key="$(python3 -I Scripts/release/sparkle_release.py public-key --seed-env SPARKLE_PRIVATE_KEY)"
+          if [ "$app_key" != "$signing_key" ]; then
+            echo "Info.plist's SUPublicEDKey doesn't match SPARKLE_PRIVATE_KEY."
+            exit 1
+          fi
+          echo "Info.plist's SUPublicEDKey matches the release signing key."
+
+  release:
+    name: Publish release
+    needs: [test, release-tools]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # One release at a time; a newer run waits instead of racing an older one.
+    concurrency:
+      group: echofetch-release
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      FEED_URL: https://github.com/${{ github.repository }}/releases/latest/download/appcast.xml
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Read the version
+        id: version
+        run: |
+          read -r version build < <(python3 -c "import plistlib; d = plistlib.load(open('Resources/Info.plist', 'rb')); print(d['CFBundleShortVersionString'], d['CFBundleVersion'])")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "Version $version (build $build)"
+      - name: Read the published feed
+        id: feed
+        run: |
+          status="$(curl -sSL -o current-appcast.xml -w '%{http_code}' "$FEED_URL")"
+          case "$status" in
+            200)
+              echo "published_build=$(python3 -I Scripts/release/sparkle_release.py feed-build current-appcast.xml)" >> "$GITHUB_OUTPUT"
+              ;;
+            404)
+              rm -f current-appcast.xml
+              echo "published_build=0" >> "$GITHUB_OUTPUT"
+              echo "No feed is published yet."
+              ;;
+            *)
+              echo "Couldn't read the published feed (HTTP $status)."
+              exit 1
+              ;;
+          esac
+      - name: Check whether it's already released
+        id: existing
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD: ${{ steps.version.outputs.build }}
+          PUBLISHED_BUILD: ${{ steps.feed.outputs.published_build }}
+        run: |
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "released=true" >> "$GITHUB_OUTPUT"
+            if [ "$PUBLISHED_BUILD" -ge "$BUILD" ]; then
+              echo "advertised=true" >> "$GITHUB_OUTPUT"
+              echo "v$VERSION is already released and in the feed; nothing to do."
+            else
+              echo "advertised=false" >> "$GITHUB_OUTPUT"
+              echo "v$VERSION is released but not in the feed yet; finishing that step."
+            fi
+          else
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            echo "advertised=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Download the app this run built
+        if: steps.existing.outputs.released == 'false'
+        uses: actions/download-artifact@v8
+        with:
+          name: EchoFetch-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release
+      - name: Check the download, its signing and its update key
+        if: steps.existing.outputs.released == 'false'
+        working-directory: release
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD: ${{ steps.version.outputs.build }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          sha256sum -c EchoFetch.zip.sha256
+          cat signing.txt
+          mode="$(sed -n 's/^mode=//p' signing.txt)"
+          notarized="$(sed -n 's/^notarized=//p' signing.txt)"
+          case "$mode" in
+            self-signed) ;;
+            developer-id) [ "$notarized" = "yes" ] || { echo "Developer ID builds must be notarized before release."; exit 1; } ;;
+            *) echo "Releases need a real signing identity so macOS keeps EchoFetch's permissions; this build is $mode-signed."; exit 1 ;;
+          esac
+          unzip -p EchoFetch.zip EchoFetch.app/Contents/Info.plist > shipped-Info.plist
+          read -r shipped_version shipped_build shipped_key < <(python3 -c "import plistlib; d = plistlib.load(open('shipped-Info.plist', 'rb')); print(d['CFBundleShortVersionString'], d['CFBundleVersion'], d['SUPublicEDKey'])")
+          [ "$shipped_version" = "$VERSION" ] && [ "$shipped_build" = "$BUILD" ]
+          signing_key="$(python3 -I ../Scripts/release/sparkle_release.py public-key --seed-env SPARKLE_PRIVATE_KEY)"
+          if [ "$signing_key" != "$shipped_key" ]; then
+            echo "The app's SUPublicEDKey doesn't match SPARKLE_PRIVATE_KEY; installed copies couldn't verify this update."
+            exit 1
+          fi
+          echo "The app trusts the release signing key."
+      - name: Sign the download and write the feed
+        if: steps.existing.outputs.released == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD: ${{ steps.version.outputs.build }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          tool="python3 -I Scripts/release/sparkle_release.py"
+          notes="docs/releases/$VERSION.md"
+          [ -f "$notes" ] || { echo "Missing $notes"; exit 1; }
+          if [ -f current-appcast.xml ]; then
+            $tool require-newer --build "$BUILD" --current-feed current-appcast.xml
+          fi
+          public_key="$(python3 -c "import plistlib; print(plistlib.load(open('release/shipped-Info.plist', 'rb'))['SUPublicEDKey'])")"
+          signature="$($tool sign --seed-env SPARKLE_PRIVATE_KEY release/EchoFetch.zip)"
+          $tool verify --public-key "$public_key" release/EchoFetch.zip "$signature"
+          printf '%s\n' "$signature" > release/EchoFetch.zip.sig
+          $tool feed --app-name EchoFetch --version "$VERSION" --build "$BUILD" \
+            --url "https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION/EchoFetch.zip" \
+            --archive release/EchoFetch.zip --signature "$signature" --minimum-system 26.0 \
+            --notes "$notes" --output release/appcast.xml
+          $tool sign-feed --seed-env SPARKLE_PRIVATE_KEY release/appcast.xml
+          $tool verify-feed --public-key "$public_key" release/appcast.xml
+      - name: Publish the download (not yet in the feed)
+        if: steps.existing.outputs.released == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          notes="docs/releases/$VERSION.md"
+          gh release create "v$VERSION" release/EchoFetch.zip release/EchoFetch.zip.sha256 release/EchoFetch.zip.sig release/appcast.xml \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "EchoFetch $VERSION" --notes-file "$notes" --latest=false
+      - name: Check the public download, then add it to the feed
+        if: steps.existing.outputs.advertised == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD: ${{ steps.version.outputs.build }}
+        run: |
+          tool="python3 -I Scripts/release/sparkle_release.py"
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION"
+          mkdir -p public
+          # Anyone can download it, logged out, and it's byte-for-byte the tested app.
+          curl -fsSL -o public/EchoFetch.zip "$base/EchoFetch.zip"
+          curl -fsSL -o public/EchoFetch.zip.sha256 "$base/EchoFetch.zip.sha256"
+          curl -fsSL -o public/appcast.xml "$base/appcast.xml"
+          (cd public && sha256sum -c EchoFetch.zip.sha256)
+          unzip -p public/EchoFetch.zip EchoFetch.app/Contents/Info.plist > public/Info.plist
+          public_key="$(python3 -c "import plistlib; print(plistlib.load(open('public/Info.plist', 'rb'))['SUPublicEDKey'])")"
+          $tool verify-feed --public-key "$public_key" public/appcast.xml
+          [ "$($tool feed-build public/appcast.xml)" = "$BUILD" ]
+          # Never let an older run take the feed back: re-read what's published right now.
+          status="$(curl -sSL -o now-appcast.xml -w '%{http_code}' "$FEED_URL")"
+          if [ "$status" = "200" ]; then
+            $tool require-newer --build "$BUILD" --current-feed now-appcast.xml
+          elif [ "$status" != "404" ]; then
+            echo "Couldn't read the published feed (HTTP $status)."
+            exit 1
+          fi
+          gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --latest
+          for attempt in 1 2 3 4 5 6; do
+            if curl -fsSL -o advertised.xml "$FEED_URL" && [ "$($tool feed-build advertised.xml)" = "$BUILD" ]; then
+              echo "The feed now offers build $BUILD."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "The feed doesn't show build $BUILD yet."
+          exit 1
