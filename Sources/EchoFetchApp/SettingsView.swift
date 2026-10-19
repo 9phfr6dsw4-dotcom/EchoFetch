@@ -9,6 +9,7 @@ struct SettingsView: View {
     @AppStorage(Preferences.fillInCopiedLinksKey) private var fillInCopiedLinks = true
 
     private var tools: ToolsController { runtime.tools }
+    private var updates: UpdateController { runtime.updates }
 
     private var saveFolder: URL {
         saveFolderPath.isEmpty ? Preferences.defaultSaveFolder : URL(fileURLWithPath: saveFolderPath, isDirectory: true)
@@ -20,7 +21,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Settings")
                         .font(.largeTitle.weight(.semibold))
-                    Text("Choose where downloads go and keep the download engine current.")
+                    Text("Choose where downloads go and keep EchoFetch and its download engine current.")
                         .font(.title3)
                         .foregroundStyle(.secondary)
                 }
@@ -29,8 +30,9 @@ struct SettingsView: View {
                 formatSettings
                 linkSettings
                 engineSettings
+                updateSettings
 
-                Label("EchoFetch has no accounts or tracking. It only connects to the sites you download from, and to GitHub to update its download engine.", systemImage: "lock.shield")
+                Label("EchoFetch has no accounts or tracking. It only connects to the sites you download from, and to GitHub to update its download engine and to check for new versions of EchoFetch.", systemImage: "lock.shield")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -185,6 +187,52 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 4)
         }
+    }
+
+    // MARK: Updates
+
+    private var updateSettings: some View {
+        GroupBox("Updates") {
+            VStack(alignment: .leading, spacing: 10) {
+                Toggle("Check for updates automatically", isOn: Binding(
+                    get: { updates.automaticallyChecks },
+                    set: { updates.setAutomaticallyChecks($0) }
+                ))
+                Text("EchoFetch looks for a new version when it starts and then every hour.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Divider()
+
+                Toggle("Download and install updates automatically", isOn: Binding(
+                    get: { updates.automaticallyInstalls },
+                    set: { updates.setAutomaticallyInstalls($0) }
+                ))
+                .disabled(!updates.automaticallyChecks)
+                Text("EchoFetch installs a new version and reopens by itself, once nothing is downloading. Your save folder, history and settings stay as they are.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Divider()
+
+                HStack(alignment: .firstTextBaseline) {
+                    Text(lastUpdateCheckText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Check for Updates…") { updates.checkForUpdates() }
+                        .disabled(!updates.canCheckForUpdates)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 4)
+        }
+    }
+
+    private var lastUpdateCheckText: String {
+        guard let date = updates.lastCheckDate else { return "Not checked for updates yet." }
+        return "Last checked for updates \(date.formatted(date: .abbreviated, time: .shortened))."
     }
 
     @ViewBuilder

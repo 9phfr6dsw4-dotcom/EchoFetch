@@ -1,0 +1,123 @@
+import AppKit
+import EchoFetchCore
+import Observation
+import Sparkle
+
+/// EchoFetch's automatic updates, through Sparkle.
+///
+/// Sparkle checks every hour (set in Info.plist) and once right after launch. When automatic
+/// installs are on, a downloaded update is installed and EchoFetch relaunched as soon as nothing
+/// is downloading, setting up its tools or updating its download engine. The settings live in
+/// Sparkle's own saved preferences.
+@MainActor
+@Observable
+final class UpdateController: NSObject {
+    private(set) var canCheckForUpdates = false
+    private(set) var automaticallyChecks = false
+    private(set) var automaticallyInstalls = false
+    private(set) var lastCheckDate: Date?
+
+    @ObservationIgnored private var controller: SPUStandardUpdaterController?
+    @ObservationIgnored private var observations: [NSKeyValueObservation] = []
+    @ObservationIgnored private var installWaitTask: Task<Void, Never>?
+    @ObservationIgnored private var pendingInstall: (() -> Void)?
+    @ObservationIgnored private let downloads: DownloadController
+    @ObservationIgnored private let tools: ToolsController
+
+    init(downloads: DownloadController, tools: ToolsController) {
+        self.downloads = downloads
+        self.tools = tools
+        super.init()
+    }
+
+    private var updater: SPUUpdater? { controller?.updater }
+
+    /// Work that an update must not interrupt.
+    private var isBusy: Bool {
+        downloads.isDownloading || tools.setupState == .preparing || tools.engineCheck == .checking
+    }
+
+    /// Starts the updater, then checks right away if automatic checks are on.
+    func start() {
+        guard controller == nil else { return }
+        let controller = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: self, userDriverDelegate: nil)
+        self.controller = controller
+        let updater = controller.updater
+        observations = [
+            updater.observe(\.canCheckForUpdates, options: [.initial, .new]) { [weak self] updater, _ in
+                MainActor.assumeIsolated { self?.refresh(from: updater) }
+            },
+            updater.observe(\.automaticallyChecksForUpdates, options: [.new]) { [weak self] updater, _ in
+                MainActor.assumeIsolated { self?.refresh(from: updater) }
+            },
+            updater.observe(\.automaticallyDownloadsUpdates, options: [.new]) { [weak self] updater, _ in
+                MainActor.assumeIsolated { self?.refresh(from: updater) }
+            },
+            updater.observe(\.lastUpdateCheckDate, options: [.new]) { [weak self] updater, _ in
+                MainActor.assumeIsolated { self?.refresh(from: updater) }
+            }
+        ]
+        refresh(from: updater)
+        if updater.automaticallyChecksForUpdates {
+            updater.checkForUpdatesInBackground()
+        }
+    }
+
+    func checkForUpdates() {
+        controller?.checkForUpdates(nil)
+    }
+
+    func setAutomaticallyChecks(_ enabled: Bool) {
+        updater?.automaticallyChecksForUpdates = enabled
+    }
+
+    func setAutomaticallyInstalls(_ enabled: Bool) {
+        updater?.automaticallyDownloadsUpdates = enabled
+    }
+
+    private func refresh(from updater: SPUUpdater) {
+        canCheckForUpdates = updater.canCheckForUpdates
+        automaticallyChecks = updater.automaticallyChecksForUpdates
+        automaticallyInstalls = updater.automaticallyDownloadsUpdates
+        lastCheckDate = updater.lastUpdateCheckDate
+    }
+
+    /// Runs `install` once EchoFetch isn't busy any more.
+    private func installWhenIdle(_ install: @escaping () -> Void) {
+        pendingInstall = install
+        installWaitTask?.cancel()
+        installWaitTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                if UpdateInstallPolicy.canInstallNow(isBusy: self.isBusy) {
+                    self.installWaitTask = nil
+                    let install = self.pendingInstall
+                    self.pendingInstall = nil
+                    install?()
+                    return
+                }
+                try? await Task.sleep(for: .seconds(UpdateInstallPolicy.retryInterval))
+            }
+        }
+    }
+}
+
+extension UpdateController: SPUUpdaterDelegate {
+    /// With automatic installs on, Sparkle hands over the downloaded update; EchoFetch installs and
+    /// relaunches as soon as it's idle instead of waiting for the next quit.
+    @objc(updater:willInstallUpdateOnQuit:immediateInstallationBlock:)
+    func updater(_ updater: SPUUpdater, willInstallUpdateOnQuit item: SUAppcastItem, immediateInstallationBlock immediateInstallHandler: @escaping () -> Void) -> Bool {
+        installWhenIdle(immediateInstallHandler)
+        return true
+    }
+
+    /// An update the user chose to install also waits for a download to finish.
+    @objc(updater:shouldPostponeRelaunchForUpdate:untilInvokingBlock:)
+    func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem, untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
+        if UpdateInstallPolicy.canInstallNow(isBusy: isBusy) {
+            return false
+        }
+        installWhenIdle(installHandler)
+        return true
+    }
+}
