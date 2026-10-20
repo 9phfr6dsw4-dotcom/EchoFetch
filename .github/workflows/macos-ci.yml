@@ -13,7 +13,7 @@ jobs:
   test:
     name: Test on macOS 26
     runs-on: macos-26
-    timeout-minutes: 220
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
         with:
@@ -49,15 +49,12 @@ jobs:
           ECHOFETCH_TEST_MEDIA_URL="http://127.0.0.1:8765/sample.mp4" \
             swift test
           kill "$server_pid" || true
+      # Self-signed only. Never pass the Developer ID or notary secrets here: that certificate
+      # carries the owner's legal name and EchoFetch stays private (ci-signing.sh refuses them).
       - name: Set up the signing identity
         env:
           SELF_SIGN_P12_BASE64: ${{ secrets.SELF_SIGN_P12_BASE64 }}
           SELF_SIGN_P12_PASSWORD: ${{ secrets.SELF_SIGN_P12_PASSWORD }}
-          DEVELOPER_ID_P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
-          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
-          NOTARY_API_KEY_P8_BASE64: ${{ secrets.NOTARY_API_KEY_P8_BASE64 }}
-          NOTARY_API_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
-          NOTARY_API_ISSUER_ID: ${{ secrets.NOTARY_API_ISSUER_ID }}
         run: bash Scripts/ci-signing.sh
       - name: Build, package, and verify native app
         run: bash Scripts/package-app.sh
@@ -187,12 +184,11 @@ jobs:
           sha256sum -c EchoFetch.zip.sha256
           cat signing.txt
           mode="$(sed -n 's/^mode=//p' signing.txt)"
-          notarized="$(sed -n 's/^notarized=//p' signing.txt)"
-          case "$mode" in
-            self-signed) ;;
-            developer-id) [ "$notarized" = "yes" ] || { echo "Developer ID builds must be notarized before release."; exit 1; } ;;
-            *) echo "Releases need a real signing identity so macOS keeps EchoFetch's permissions; this build is $mode-signed."; exit 1 ;;
-          esac
+          # EchoFetch releases are self-signed only, never Developer ID (it carries the owner's legal name).
+          if [ "$mode" != "self-signed" ]; then
+            echo "EchoFetch releases must be self-signed; this build is $mode-signed."
+            exit 1
+          fi
           unzip -p EchoFetch.zip EchoFetch.app/Contents/Info.plist > shipped-Info.plist
           read -r shipped_version shipped_build shipped_key < <(python3 -c "import plistlib; d = plistlib.load(open('shipped-Info.plist', 'rb')); print(d['CFBundleShortVersionString'], d['CFBundleVersion'], d['SUPublicEDKey'])")
           [ "$shipped_version" = "$VERSION" ] && [ "$shipped_build" = "$BUILD" ]

@@ -2,7 +2,7 @@ import Foundation
 
 /// One tool EchoFetch downloads on first launch. The app carries only this description (name,
 /// pinned version, where to get it and the SHA-256 it must have); the tool itself is not inside
-/// the app, so Apple's notarization has nothing unsigned to inspect.
+/// the app, so the app holds only code it signs itself.
 public struct ToolManifestEntry: Codable, Equatable, Sendable {
     public enum Archive: String, Codable, Equatable, Sendable {
         /// The download is the executable itself.

@@ -41,7 +41,7 @@
 ## Install
 
 1. Download `EchoFetch.zip` from the [latest release](https://github.com/9phfr6dsw4-dotcom/EchoFetch/releases/latest), unzip it, and move EchoFetch into Applications.
-2. Open it. EchoFetch is signed and notarized by Apple, so macOS opens it without a warning.
+2. Open it. EchoFetch is self-signed, not notarized, so the first time macOS says it can't check the app: open **System Settings → Privacy & Security** and choose **Open Anyway**.
 3. The first launch needs an internet connection and takes a minute while EchoFetch downloads its download tools.
 
 After that, EchoFetch updates itself: it checks for a new version when it starts and every hour, and installs it once nothing is downloading. **Check for Updates…** is in the app menu, and Settings → Updates has the options.
@@ -55,7 +55,7 @@ EchoFetch is a SwiftUI app that runs the command-line tools it downloads on firs
 - **Deno** runs the JavaScript YouTube requires.
 - **[Sparkle](https://sparkle-project.org)** installs new versions of EchoFetch itself. Each update is signed, and EchoFetch refuses anything that isn't signed by its own key.
 
-Each tool has a pinned version and SHA-256 (`Scripts/fetch-tools.sh`), checked when the app is built. The tools are not packed inside the app, because Apple's notarization requires every executable in an app to be signed and these belong to other projects. The app carries only `Contents/Resources/Tools/manifest.json` (name, version, address and checksums), downloads each tool on first launch, and refuses any download that doesn't match its checksum.
+Each tool has a pinned version and SHA-256 (`Scripts/fetch-tools.sh`), checked when the app is built. The tools are not packed inside the app, because they belong to other projects and aren't signed by EchoFetch. The app carries only `Contents/Resources/Tools/manifest.json` (name, version, address and checksums), downloads each tool on first launch, and refuses any download that doesn't match its checksum.
 
 ## Building
 
