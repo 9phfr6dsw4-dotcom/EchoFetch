@@ -62,6 +62,7 @@ final class ToolInstallerTests: XCTestCase {
 
             let isZip = name == "deno"
             let download = server.appendingPathComponent("\(name)-\(version)\(isZip ? ".zip" : "")")
+            try? FileManager.default.removeItem(at: download)
             if isZip {
                 try runDitto(["-c", "-k", folder.path, download.path])
             } else {

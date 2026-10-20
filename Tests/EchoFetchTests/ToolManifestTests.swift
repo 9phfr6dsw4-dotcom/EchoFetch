@@ -78,11 +78,11 @@ final class ToolManifestTests: XCTestCase {
     }
 
     func testManifestDecodesThePackagedFormat() throws {
-        let json = #"{"tools":[{"name":"yt-dlp","version":"2026.08.19","sha256":"abc"},{"name":"deno","version":"2.9.7","sha256":"def"}]}"#
+        let json = #"{"tools":[{"name":"yt-dlp","version":"2026.08.19","sha256":"abc","url":"https://example.com/yt-dlp","archive":"file","downloadSHA256":"abc"},{"name":"deno","version":"2.9.7","sha256":"def","url":"https://example.com/deno.zip","archive":"zip","downloadSHA256":"ghi"}]}"#
         let manifest = try JSONDecoder().decode(ToolManifest.self, from: Data(json.utf8))
         XCTAssertEqual(manifest.tools, [
-            ToolManifestEntry(name: "yt-dlp", version: "2026.08.19", sha256: "abc"),
-            ToolManifestEntry(name: "deno", version: "2.9.7", sha256: "def")
+            ToolManifestEntry(name: "yt-dlp", version: "2026.08.19", sha256: "abc", url: "https://example.com/yt-dlp", archive: .file, downloadSHA256: "abc"),
+            ToolManifestEntry(name: "deno", version: "2.9.7", sha256: "def", url: "https://example.com/deno.zip", archive: .zip, downloadSHA256: "ghi")
         ])
     }
 
