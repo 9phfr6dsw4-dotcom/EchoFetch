@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # Sets up the code-signing identity for a CI build, or removes it again ("cleanup").
 #
-# Developer ID wins when its secrets are present; then the persistent self-signed certificate;
-# otherwise the build is ad-hoc signed. The certificate goes into a temporary keychain that only
-# this job uses. Writes SIGN_MODE, SIGN_IDENTITY, SIGN_KEYCHAIN (and the notary key path) to
-# $GITHUB_ENV. Never prints a secret.
+# Uses the persistent self-signed certificate when its secrets are present; otherwise the build
+# is ad-hoc signed. The certificate goes into a temporary keychain that only this job uses.
+# Writes SIGN_MODE, SIGN_IDENTITY and SIGN_KEYCHAIN to $GITHUB_ENV. Never prints a secret.
+#
+# EchoFetch is never signed with the Developer ID certificate or notarized: that certificate
+# carries the owner's legal name, and EchoFetch stays a private, self-signed app. A Developer ID
+# secret handed to this script stops the build.
 #
 # Secrets read from the environment:
-#   DEVELOPER_ID_P12_BASE64, DEVELOPER_ID_P12_PASSWORD     (later, with Apple's program)
-#   NOTARY_API_KEY_P8_BASE64, NOTARY_API_KEY_ID, NOTARY_API_ISSUER_ID
-#   SELF_SIGN_P12_BASE64, SELF_SIGN_P12_PASSWORD           (the self-signed trial)
+#   SELF_SIGN_P12_BASE64, SELF_SIGN_P12_PASSWORD
 set -euo pipefail
 
 KEYCHAIN="${RUNNER_TEMP:?}/echofetch-signing.keychain-db"
@@ -25,11 +26,12 @@ write_env() {
     printf '%s=%s\n' "$1" "$2" >> "$GITHUB_ENV"
 }
 
-if [[ -n "${DEVELOPER_ID_P12_BASE64:-}" ]]; then
-    MODE="developer-id"
-    P12_BASE64="$DEVELOPER_ID_P12_BASE64"
-    P12_PASSWORD="${DEVELOPER_ID_P12_PASSWORD:?DEVELOPER_ID_P12_PASSWORD is missing}"
-elif [[ -n "${SELF_SIGN_P12_BASE64:-}" ]]; then
+if [[ -n "${DEVELOPER_ID_P12_BASE64:-}${NOTARY_API_KEY_P8_BASE64:-}" ]]; then
+    echo "EchoFetch is self-signed only; it must never get the Developer ID or notary secrets." >&2
+    exit 1
+fi
+
+if [[ -n "${SELF_SIGN_P12_BASE64:-}" ]]; then
     MODE="self-signed"
     P12_BASE64="$SELF_SIGN_P12_BASE64"
     P12_PASSWORD="${SELF_SIGN_P12_PASSWORD:?SELF_SIGN_P12_PASSWORD is missing}"
@@ -65,33 +67,19 @@ done < <(security list-keychains -d user)
 security list-keychains -d user -s "$KEYCHAIN" "${existing[@]}"
 
 # Without -v so a self-signed certificate (valid for signing, not trusted by macOS) is listed too.
-IDENTITY="$(security find-identity -p codesigning "$KEYCHAIN" | sed -nE 's/^ *1\) ([0-9A-F]{40}) .*/\1/p')"
+IDENTITY="$(security find-identity -p codesigning "$KEYCHAIN" | sed -nE 's/^ *1\) ([0-9A-F]{40}) .*/\1/p' | sed -n 1p)"
 if [[ -z "$IDENTITY" ]]; then
     echo "The certificate in the secrets has no code-signing identity." >&2
     exit 1
 fi
-NAME="$(security find-identity -p codesigning "$KEYCHAIN" | sed -nE 's/^ *1\) [0-9A-F]{40} "([^"]*)".*/\1/p')"
-if [[ "$MODE" == "developer-id" && "$NAME" != "Developer ID Application:"* ]]; then
-    echo "The Developer ID secret holds \"$NAME\", not a Developer ID Application certificate." >&2
+NAME="$(security find-identity -p codesigning "$KEYCHAIN" | sed -nE 's/^ *1\) [0-9A-F]{40} "([^"]*)".*/\1/p' | sed -n 1p)"
+[[ -n "$NAME" ]] && echo "::add-mask::$NAME"
+if [[ "$NAME" == "Developer ID"* || "$NAME" == "Apple Development:"* || "$NAME" == "Apple Distribution:"* ]]; then
+    echo "The self-signed secret holds an Apple-issued certificate; EchoFetch is self-signed only." >&2
     exit 1
 fi
-echo "Signing as \"$NAME\" ($MODE), certificate SHA-1 $IDENTITY."
+echo "Signing ($MODE), certificate SHA-1 $IDENTITY."
 
 write_env SIGN_MODE "$MODE"
 write_env SIGN_IDENTITY "$IDENTITY"
 write_env SIGN_KEYCHAIN "$KEYCHAIN"
-
-if [[ "$MODE" == "developer-id" ]]; then
-    for name in NOTARY_API_KEY_P8_BASE64 NOTARY_API_KEY_ID NOTARY_API_ISSUER_ID; do
-        if [[ -z "${!name:-}" ]]; then
-            echo "Developer ID builds must be notarized, but the $name secret is missing." >&2
-            exit 1
-        fi
-    done
-    NOTARY_KEY_PATH="$SECRETS_DIR/notary-key.p8"
-    printf '%s' "$NOTARY_API_KEY_P8_BASE64" | base64 --decode > "$NOTARY_KEY_PATH"
-    chmod 600 "$NOTARY_KEY_PATH"
-    write_env NOTARY_KEY_PATH "$NOTARY_KEY_PATH"
-    write_env NOTARY_KEY_ID "$NOTARY_API_KEY_ID"
-    write_env NOTARY_ISSUER_ID "$NOTARY_API_ISSUER_ID"
-fi

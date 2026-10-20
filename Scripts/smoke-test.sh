@@ -70,9 +70,9 @@ if [[ "$running" != 1 ]]; then
 fi
 printf 'Clean-location launch smoke test passed; EchoFetch remained running.\n'
 
-# EchoFetch unpacks its tools into Application Support on first launch.
+# EchoFetch downloads its tools into Application Support on first launch (needs the network).
 ready=0
-for _ in {1..60}; do
+for _ in {1..300}; do
     if [[ -s "$TOOLS_DIR/installed.json" ]] \
         && [[ -x "$TOOLS_DIR/yt-dlp" && -x "$TOOLS_DIR/ffmpeg" && -x "$TOOLS_DIR/ffprobe" && -x "$TOOLS_DIR/deno" ]] \
         && grep -F '"deno"' "$TOOLS_DIR/installed.json" >/dev/null \

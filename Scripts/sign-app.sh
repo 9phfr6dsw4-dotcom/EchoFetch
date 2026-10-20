@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Signs EchoFetch.app from the inside out: Sparkle's helpers, then Sparkle, then the app itself.
-# SIGN_MODE is adhoc (the default), self-signed or developer-id; SIGN_IDENTITY is the
-# certificate's SHA-1 for the last two. Developer ID adds the hardened runtime and a timestamp,
-# which notarization needs.
+# SIGN_MODE is adhoc (the default) or self-signed; SIGN_IDENTITY is the self-signed
+# certificate's SHA-1. EchoFetch is never Developer ID signed (see ci-signing.sh).
 set -euo pipefail
 
 APP="${1:?usage: sign-app.sh <path to EchoFetch.app>}"
@@ -19,9 +18,6 @@ case "$MODE" in
         ;;
     self-signed)
         args+=(--timestamp=none)
-        ;;
-    developer-id)
-        args+=(--options runtime --timestamp)
         ;;
     *)
         printf 'Unknown SIGN_MODE: %s\n' "$MODE" >&2
