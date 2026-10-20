@@ -19,12 +19,16 @@ private final class StubDownloader: ToolDownloader, @unchecked Sendable {
         return requested
     }
 
-    func download(_ url: URL, to destination: URL) async throws {
+    /// Locking happens here, in a plain method, because Swift 6 forbids NSLock calls in async code.
+    private func record(_ url: URL) -> URL? {
         lock.lock()
+        defer { lock.unlock() }
         requested.append(url.absoluteString)
-        let source = files[url.absoluteString]
-        lock.unlock()
-        guard let source else { throw URLError(.notConnectedToInternet) }
+        return files[url.absoluteString]
+    }
+
+    func download(_ url: URL, to destination: URL) async throws {
+        guard let source = record(url) else { throw URLError(.notConnectedToInternet) }
         try? FileManager.default.removeItem(at: destination)
         try FileManager.default.copyItem(at: source, to: destination)
     }
