@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Downloads the command-line tools EchoFetch ships with, at pinned versions, and checks each
+# Downloads the command-line tools EchoFetch uses, at pinned versions, and checks each
 # download against its SHA-256 before using it. Output: .build/echofetch-tools/bin/{yt-dlp,ffmpeg,ffprobe,deno}
 # plus versions.txt ("name version" per line). Safe to run again: verified downloads are reused.
 set -euo pipefail
@@ -63,4 +63,8 @@ rm -rf "$OUT/deno-unzip"
 
 printf 'yt-dlp %s\nffmpeg %s\nffprobe %s\ndeno %s\n' \
     "$YTDLP_VERSION" "$FFMPEG_VERSION" "$FFMPEG_VERSION" "$DENO_VERSION" > "$BIN/versions.txt"
+# Where the app downloads each tool from on first launch (tab-separated:
+# name, address, "file" or "zip", SHA-256 of the download).
+printf 'yt-dlp\t%s\tfile\t%s\nffmpeg\t%s\tfile\t%s\nffprobe\t%s\tfile\t%s\ndeno\t%s\tzip\t%s\n' \
+    "$YTDLP_URL" "$YTDLP_SHA256" "$FFMPEG_URL" "$FFMPEG_SHA256" "$FFPROBE_URL" "$FFPROBE_SHA256" "$DENO_URL" "$DENO_SHA256" > "$BIN/sources.tsv"
 printf 'Tools ready in %s\n' "$BIN"

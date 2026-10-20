@@ -5,13 +5,16 @@ public enum ToolSetupError: LocalizedError, Equatable {
     case missingFromApp
     case damaged(String)
     case unpackFailed(String)
+    case downloadFailed(String)
 
     public var errorDescription: String? {
         switch self {
         case .missingFromApp:
-            "The download tools are missing from EchoFetch. Download EchoFetch again from its release page."
+            "EchoFetch's list of download tools is missing. Download EchoFetch again from its release page."
         case .damaged(let name):
-            "The copy of \(name) inside EchoFetch is damaged. Download EchoFetch again from its release page."
+            "The copy of \(name) that EchoFetch downloaded didn't match what it expects, so it wasn't used. Try again. If it keeps happening, download EchoFetch again from its release page."
+        case .downloadFailed:
+            "EchoFetch needs an internet connection the first time it opens, to download its download tools. Check your connection, then try again."
         case .unpackFailed(let name):
             "EchoFetch couldn't set up \(name). Make sure your Mac has free disk space, then try again."
         }
@@ -23,19 +26,41 @@ public struct ToolInstallResult: Equatable, Sendable {
     public let installed: InstalledTools
 }
 
-/// Unpacks the tools shipped inside EchoFetch.app into Application Support, where yt-dlp can
-/// update itself. Each tool is checked against its SHA-256, made executable, and cleared of the
-/// quarantine flag the downloaded app zip carries, so macOS runs it without asking.
+/// Fetches one file. The real one uses the network; tests hand in their own.
+public protocol ToolDownloader: Sendable {
+    func download(_ url: URL, to destination: URL) async throws
+}
+
+public struct NetworkToolDownloader: ToolDownloader {
+    public init() {}
+
+    public func download(_ url: URL, to destination: URL) async throws {
+        guard url.scheme?.lowercased() == "https" else { throw ToolSetupError.missingFromApp }
+        let (temporary, response) = try await URLSession.shared.download(from: url)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            try? FileManager.default.removeItem(at: temporary)
+            throw ToolSetupError.downloadFailed(url.lastPathComponent)
+        }
+        try? FileManager.default.removeItem(at: destination)
+        try FileManager.default.moveItem(at: temporary, to: destination)
+    }
+}
+
+/// Downloads the tools listed in the app's manifest into Application Support, where yt-dlp can
+/// update itself. Every download is checked against its pinned SHA-256 before it is used, then the
+/// executable inside is checked again, made executable, and cleared of any quarantine flag.
 public struct ToolInstaller: Sendable {
     public let sourceDirectory: URL?
     public let toolsDirectory: URL
+    private let downloader: any ToolDownloader
 
-    public init(sourceDirectory: URL?, toolsDirectory: URL) {
+    public init(sourceDirectory: URL?, toolsDirectory: URL, downloader: any ToolDownloader = NetworkToolDownloader()) {
         self.sourceDirectory = sourceDirectory
         self.toolsDirectory = toolsDirectory
+        self.downloader = downloader
     }
 
-    public func installMissingTools() throws -> ToolInstallResult {
+    public func installMissingTools() async throws -> ToolInstallResult {
         guard let sourceDirectory,
               let data = try? Data(contentsOf: sourceDirectory.appendingPathComponent("manifest.json", isDirectory: false)),
               let manifest = try? JSONDecoder().decode(ToolManifest.self, from: data),
@@ -50,26 +75,44 @@ public struct ToolInstaller: Sendable {
         })
         let plan = ToolInstallPlan.toolsToInstall(bundled: manifest.tools, installed: installed, existingExecutables: existing)
         for entry in manifest.tools where plan.contains(entry.name) {
-            try install(entry, from: sourceDirectory)
+            try await install(entry)
             installed.tools[entry.name] = InstalledTool(version: entry.version, sha256: entry.sha256)
             try installed.save(to: toolsDirectory)
         }
         return ToolInstallResult(bundled: manifest.tools, installed: installed)
     }
 
-    private func install(_ entry: ToolManifestEntry, from source: URL) throws {
+    private func install(_ entry: ToolManifestEntry) async throws {
         let fileManager = FileManager.default
-        let archive = source.appendingPathComponent("\(entry.name).zip", isDirectory: false)
-        guard fileManager.fileExists(atPath: archive.path) else { throw ToolSetupError.missingFromApp }
+        guard let url = URL(string: entry.url) else { throw ToolSetupError.missingFromApp }
         let staging = toolsDirectory.appendingPathComponent(".unpack-\(entry.name)", isDirectory: true)
         try? fileManager.removeItem(at: staging)
         try fileManager.createDirectory(at: staging, withIntermediateDirectories: true)
         defer { try? fileManager.removeItem(at: staging) }
 
-        guard Self.runDitto(["-x", "-k", "--noqtn", archive.path, staging.path]) else {
-            throw ToolSetupError.unpackFailed(entry.name)
+        let download = staging.appendingPathComponent("download", isDirectory: false)
+        do {
+            try await downloader.download(url, to: download)
+        } catch let error as ToolSetupError {
+            throw error
+        } catch {
+            throw ToolSetupError.downloadFailed(entry.name)
         }
-        let unpacked = staging.appendingPathComponent(entry.name, isDirectory: false)
+        guard (try? FileDigest.sha256(of: download)) == entry.downloadSHA256 else {
+            throw ToolSetupError.damaged(entry.name)
+        }
+
+        let unpacked: URL
+        switch entry.archive {
+        case .file:
+            unpacked = download
+        case .zip:
+            let folder = staging.appendingPathComponent("unzipped", isDirectory: true)
+            guard Self.runDitto(["-x", "-k", "--noqtn", download.path, folder.path]) else {
+                throw ToolSetupError.unpackFailed(entry.name)
+            }
+            unpacked = folder.appendingPathComponent(entry.name, isDirectory: false)
+        }
         guard fileManager.fileExists(atPath: unpacked.path),
               (try? FileDigest.sha256(of: unpacked)) == entry.sha256 else {
             throw ToolSetupError.damaged(entry.name)

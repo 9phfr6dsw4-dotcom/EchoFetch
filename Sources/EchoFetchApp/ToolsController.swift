@@ -2,7 +2,7 @@ import EchoFetchCore
 import Foundation
 import Observation
 
-/// Sets up yt-dlp, ffmpeg, ffprobe and Deno from inside the app, and keeps yt-dlp (the download
+/// Downloads yt-dlp, ffmpeg, ffprobe and Deno the first time the app opens, and keeps yt-dlp (the download
 /// engine) up to date on its own.
 @MainActor
 @Observable
@@ -42,14 +42,14 @@ final class ToolsController {
         return nil
     }
 
-    /// Unpacks any tools that are missing or older than the ones inside this copy of the app.
+    /// Downloads any tools that are missing or older than the versions this copy of the app pins.
     func prepare() async {
         setupState = .preparing
         let source = Bundle.main.resourceURL?.appendingPathComponent("Tools", isDirectory: true)
         let directory = paths.directory
         do {
             let result = try await Task.detached(priority: .userInitiated) {
-                try ToolInstaller(sourceDirectory: source, toolsDirectory: directory).installMissingTools()
+                try await ToolInstaller(sourceDirectory: source, toolsDirectory: directory).installMissingTools()
             }.value
             installed = result.installed
             bundled = result.bundled

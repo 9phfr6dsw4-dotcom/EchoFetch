@@ -1,16 +1,40 @@
 import Foundation
 
-/// One tool shipped inside EchoFetch.app (Contents/Resources/Tools/<name>.zip).
+/// One tool EchoFetch downloads on first launch. The app carries only this description (name,
+/// pinned version, where to get it and the SHA-256 it must have); the tool itself is not inside
+/// the app, so Apple's notarization has nothing unsigned to inspect.
 public struct ToolManifestEntry: Codable, Equatable, Sendable {
+    public enum Archive: String, Codable, Equatable, Sendable {
+        /// The download is the executable itself.
+        case file
+        /// The download is a zip with the executable at its top level, named like the tool.
+        case zip
+    }
+
     public var name: String
     public var version: String
-    /// SHA-256 of the executable inside the zip.
+    /// SHA-256 of the executable that ends up on disk.
     public var sha256: String
+    /// An https address of the pinned release asset.
+    public var url: String
+    public var archive: Archive
+    /// SHA-256 of the downloaded file (the zip, for a zip).
+    public var downloadSHA256: String
 
-    public init(name: String, version: String, sha256: String) {
+    public init(
+        name: String,
+        version: String,
+        sha256: String,
+        url: String = "",
+        archive: Archive = .file,
+        downloadSHA256: String? = nil
+    ) {
         self.name = name
         self.version = version
         self.sha256 = sha256
+        self.url = url
+        self.archive = archive
+        self.downloadSHA256 = downloadSHA256 ?? sha256
     }
 }
 

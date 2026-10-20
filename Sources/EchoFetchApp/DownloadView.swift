@@ -73,7 +73,7 @@ struct DownloadView: View {
             HStack(spacing: 10) {
                 ProgressView()
                     .controlSize(.small)
-                Text("Setting up the download tools. This takes a few seconds the first time.")
+                Text("Setting up the download tools. The first time, EchoFetch downloads them, which takes a minute.")
                     .foregroundStyle(.secondary)
             }
         case .failed(let message):
