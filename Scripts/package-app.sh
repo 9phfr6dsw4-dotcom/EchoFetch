@@ -79,7 +79,7 @@ test -s "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 /usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$APP_BUNDLE/Contents/Info.plist" | grep -E '^https://'
 /usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP_BUNDLE/Contents/Info.plist" | grep -E '^[A-Za-z0-9+/]{43}=$'
 plutil -lint "$APP_BUNDLE/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_BUNDLE/Contents/Info.plist" | grep -Fx '0.2.3'
+/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_BUNDLE/Contents/Info.plist" | grep -Fx '0.2.4'
 /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_BUNDLE/Contents/Info.plist" | grep -Fx '5'
 
 # Signing is the last change to the app; everything after only zips, checks and hashes it.
@@ -102,7 +102,7 @@ test -L "$EXTRACTED_APP/Contents/Frameworks/Sparkle.framework/Versions/Current"
 /usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$EXTRACTED_APP/Contents/Info.plist" | grep -Fx 'EchoFetch'
 /usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$EXTRACTED_APP/Contents/Info.plist" | grep -Fx 'EchoFetch'
 plutil -lint "$EXTRACTED_APP/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$EXTRACTED_APP/Contents/Info.plist" | grep -Fx '0.2.3'
+/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$EXTRACTED_APP/Contents/Info.plist" | grep -Fx '0.2.4'
 /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$EXTRACTED_APP/Contents/Info.plist" | grep -Fx '5'
 codesign --verify --deep --strict "$EXTRACTED_APP"
 if [[ "$NOTARIZED" == "yes" ]]; then
